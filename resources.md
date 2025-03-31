@@ -10,3 +10,8 @@ https://cloud.google.com/chronicle/docs/data-ingestion-flow
 Google Chronicle and Playbooks
 https://cloud.google.com/chronicle/docs/soar/respond/working-with-playbooks/whats-on-the-playbooks-screen
 
+Google Chronicle Detection Rules
+https://cloud.google.com/chronicle/docs/detection/default-rules
+
+Google Chronical UDM
+https://cloud.google.com/chronicle/docs/event-processing/udm-overview
