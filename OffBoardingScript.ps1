@@ -78,11 +78,12 @@ function resetAccPass() {
 
 function updateUserDescr() {
     param (
-        [string]$reason,
+        [string]$reason = "No offboarding reason provided",
         [string]$username
     )
     #TO-DO: Change to Set-ADUser using service account creds
     $user.Description += " - Offboarding Reason: "
+    $output += "$username's description changed to: $reason \n" #need to test to see if this works
     user.Description += $($reason)
     Write-Host $user.Description
 }
@@ -95,8 +96,20 @@ function susOkta() {
 
 function signOutO365() {
     param (
-
+    [string] $username
     )
+    $userObj = Get-AzureADUser -ObjectId $user #gets user based object using azure, but im not sure if we have access
+
+    $uri = "https://graph.microsoft.com/v1.0/users/{userId}/revokeSignInSessions" #swap userID for appropriate field
+
+
+    $headers = @{
+    "Authorization" = "Bearer {access_token}" #we need an access token if going the Microsoft Graph path
+    "Content-Type"  = "application/json"
+    }
+
+    #Invoke-RestMethod -Uri $uri -Method POST -Headers $headers  #actually call it 
+
 }
 
 function disableActiveSync() {
@@ -201,6 +214,13 @@ switch ($mode){
         $output += "List of valid usernames: " + ($verifiedUsers -join ", ")
         Write-Host $output
 
+        #we should probably perform the neccessary operations in order
+        foreach ($username in $verifiedUsers) {
+            updateUserDescr -username $username #3
+        }
+        
+
+        Set-Content -Path "C:\Users\mivanov\OffBoardingScript\output.txt" -Value $output
     }
 }
 
