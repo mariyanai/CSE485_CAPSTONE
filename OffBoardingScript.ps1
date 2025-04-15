@@ -1,4 +1,4 @@
-#TODO:
+ #TODO:
 # 1. work out how to format output file
 # 2. connect to APIs
 # 3. clear-host ????
@@ -19,11 +19,13 @@ if ($CsvFilePath) {
     $mode = 2
 
 } else {
-    $mode = 1
+  
+  $mode = 1
 }
 
-#Create output log file
-$output = ""
+$CurrentDate = Get-Date
+$output = "Date of Execution: $CurrentDate`n"
+
 
 function setExpDate() {
     param (
@@ -41,6 +43,31 @@ function setExpDate() {
         catch{
             Write-Host "Please enter a valid date and time."
         } 
+}
+
+function Verify-Usernames { #this function is intended to verify if the users exist, if they do not exist
+    param (
+        [string]$filePath
+    )
+
+    # Read each line of the CSV file (usernames)
+    $usernames = Get-Content -Path $filePath
+    $allUsernames = Get-ADUser -Filter * -Properties SamAccountName #there is probably an optimization for this
+    $validUsernames = @() #init array
+
+    # Iterate through each username
+    foreach ($username in $usernames) {
+        #check if the user exists within Mesa
+        if($allUsernames.SamAccountName -contains $username) {
+            Write-Host "Valid user: $username"
+            $validUsernames += $username
+        }
+        else{
+            Write-Host "Invalid user: $username"
+            $output += "This username is invalid and no operations will be done on it: $username`n"
+        }    
+    }
+    return $validUsernames
 }
 
 function resetAccPass() {
@@ -88,7 +115,6 @@ if ($CsvFilePath) {
     $mode = 1
 }
 
-$output = ""
 
 #Write-Host "Choose mode:"
 #Write-Host "1. Interactive"
@@ -166,9 +192,17 @@ switch ($mode){
         while($choice -ne "8")   
     }
 
-    #Automatic Mode (Using CSV file)
+    #Automatic Mode (Using CSV file) we should probably make this an if else
     "2" {
         $data = Import-Csv -Path $CsvFilePath
         Write-Host "Entered Automatic Mode"
+        $verifiedUsers = Verify-Usernames($CsvFilePath) #zz not sure if we need to parse other input for when passwords expire and what not
+        Write-Host "List of valid usernames:" $verifiedUsers #this works!
+        $output += "List of valid usernames: " + ($verifiedUsers -join ", ")
+        Write-Host $output
+
     }
 }
+
+
+ 
