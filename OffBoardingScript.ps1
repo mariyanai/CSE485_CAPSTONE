@@ -1,8 +1,14 @@
- #TODO:
+#TODO:
 # 1. work out how to format output file
 # 2. connect to APIs
 # 3. clear-host ????
 # 4. do automatic mode
+# 5. Do Start-Sleep when writing new AD properties to log file so server can update in time
+
+#Testing User:
+#U: duser
+
+#-----------------------------------------------------------------------------------------------------------#
 
 #Set Paramter for CSV file for Automatic Mode
 param (
@@ -19,100 +25,89 @@ if ($CsvFilePath) {
     $mode = 2
 
 } else {
-  
-  $mode = 1
+    $mode = 1
 }
 
-$CurrentDate = Get-Date
-$output = "Date of Execution: $CurrentDate`n"
+#Create output log file
+$output = ""
 
+#Set credentials for service account
+$Credentials = New-Object System.Management.Automation.PSCredential `
+    -ArgumentList 'udeprosa', (ConvertTo-SecureString 'WM2G!ghGRY=d*2BYg7s#bY3t' -AsPlainText -Force)
 
-function setExpDate() {
+function setExpDate {
     param (
         [datetime]$dateInput,
-        [string]$username
+        [Microsoft.ActiveDirectory.Management.ADUser]$username
     )
     try{
-        $expirationDate = [DateTime]::Parse($dateInput)
-        #TO-DO: Change to Set-ADUser using service account creds
-        $user.AccountExpirationDate = $expirationDate
-        Write-Host $user.AccountExpirationDate
+        Write-Host "Enter setExpDate"
+        Set-ADUser -Identity $username -AccountExpirationDate $dateInput -Credential $Credentials
 
-        #Get-ADUser -Filter * -SearchBase "OU=_Users,DC=acctcom,DC=mesa" -Properties Name, SamAccountName | Select-Object Name, SamAccountName
         }
         catch{
             Write-Host "Please enter a valid date and time."
         } 
 }
 
-function Verify-Usernames { #this function is intended to verify if the users exist, if they do not exist
+function resetAccPass {
     param (
-        [string]$filePath
+        [Microsoft.ActiveDirectory.Management.ADUser]$username
     )
 
-    # Read each line of the CSV file (usernames)
-    $usernames = Get-Content -Path $filePath
-    $allUsernames = Get-ADUser -Filter * -Properties SamAccountName #there is probably an optimization for this
-    $validUsernames = @() #init array
+    function GenerateRanPassword {
+        param (
+            [int]$length = 12
+        )
 
-    # Iterate through each username
-    foreach ($username in $usernames) {
-        #check if the user exists within Mesa
-        if($allUsernames.SamAccountName -contains $username) {
-            Write-Host "Valid user: $username"
-            $validUsernames += $username
-        }
-        else{
-            Write-Host "Invalid user: $username"
-            $output += "This username is invalid and no operations will be done on it: $username`n"
-        }    
+        Add-Type -AssemblyName System.Web
+        [System.Web.Security.Membership]::GeneratePassword($length, 0)
+
     }
-    return $validUsernames
-}
 
-function resetAccPass() {
-    param (
-  
-    )
+    $newPassword = GenerateRanPassword
+    Set-ADAccountPassword -Identity $username `
+                          -NewPassword (ConvertTo-SecureString $newPassword -AsPlainText -Force) `
+                          -Reset `
+                          -Credential $Credentials
+    Unlock-ADAccount -Identity $username -Credential $Credentials
+    Set-ADUser -Identity $username -ChangePasswordAtLogon $true -Credential $Credentials
+    Write-Host "Password has been reset to: $newPassword, forced password change on next login."
 }
 
 function updateUserDescr() {
     param (
-        [string]$reason = "No offboarding reason provided",
-        [string]$username
+        [string]$reason,
+        [Microsoft.ActiveDirectory.Management.ADUser]$username
     )
-    #TO-DO: Change to Set-ADUser using service account creds
-    $user.Description += " - Offboarding Reason: "
-    $output += "$username's description changed to: $reason \n" #need to test to see if this works
-    user.Description += $($reason)
-    Write-Host $user.Description
+
+    $reason = " - Offboarding Reason: " + $reason
+    $Description = (Get-ADUser -Identity $username -Properties Description).Description
+    $Description += $reason
+    Set-ADUser -Identity $username -Description $Description -Credential $Credentials
+    Write-Host (Get-ADUser -Identity $username -Properties Description).Description
 }
 
-function susOkta() {
+function resetUserDescr {
+    param (
+        [Microsoft.ActiveDirectory.Management.ADUser]$username
+    )
+    Set-ADUser -Identity $username -Description "DoIT - Automation test account" -Credential $Credentials
+}
+
+function susOkta {
     param (
 
     )
 }
 
-function signOutO365() {
+function signOutO365 {
     param (
-    [string] $username
+
     )
-    $userObj = Get-AzureADUser -ObjectId $user #gets user based object using azure, but im not sure if we have access
-
-    $uri = "https://graph.microsoft.com/v1.0/users/{userId}/revokeSignInSessions" #swap userID for appropriate field
-
-
-    $headers = @{
-    "Authorization" = "Bearer {access_token}" #we need an access token if going the Microsoft Graph path
-    "Content-Type"  = "application/json"
-    }
-
-    #Invoke-RestMethod -Uri $uri -Method POST -Headers $headers  #actually call it 
-
 }
 
-function disableActiveSync() {
+function disableActiveSync {
     param (
 
     )
@@ -128,19 +123,14 @@ if ($CsvFilePath) {
     $mode = 1
 }
 
-
-#Write-Host "Choose mode:"
-#Write-Host "1. Interactive"
-#Write-Host "2. Automatic"
-
-#$mode = Read-Host "Enter a number (1-2)"
+$output = ""
 
 switch ($mode){
     # Interactive (manual) mode
     "1" {
         $username = Read-Host "Please enter a username"
         try{
-            $user = Get-ADUser -properties * $username
+            $user = Get-ADUser -Identity $username -properties *
         }
         catch{
             Write-Host "Invalid username."
@@ -166,15 +156,26 @@ switch ($mode){
                 #1: Set AD account expiration date
                 "1" {
                     $dateInput = Read-Host "Enter an expiration date and time: MM/DD/YYYY HH:MM"
-                    setExpDate($dateInput, $user)  
+                    $dateInput = $dateInput.Trim()
+                    
+                    #$dateInput = [DateTime]::Parse($dateInput)
+                    $dateInput = [datetime]::ParseExact($dateInput, 'MM/dd/yyyy HH:mm', $null)
+                    Write-Host "Parsed date: $dateInput"
+                    Write-Host "Type of dateInput: $($dateInput.GetType().FullName)"
+                    setExpDate $dateInput $user  
+             
                 }
                 #2: Reset account password
                 "2" {  
+                    resetAccPass $user
+                    Write-Host "Password has been reset, force password change at next login."
                 }
                 #3: Update user description field in AD with offboarding reason
                 "3" {
-                    $reason = Read-Host "Enter offboarding reason."
-                    updateUserDescr($reason, $user)
+                    $reason = Read-Host "Enter offboarding reason"
+                    #updateUserDescr $reason $user
+                    resetUserDescr $user 
+                    (Get-ADUser -Identity duser -properties Description).Description
                 }
                 #4: Suspend user Okta access
                 "4" {    
@@ -205,24 +206,11 @@ switch ($mode){
         while($choice -ne "8")   
     }
 
-    #Automatic Mode (Using CSV file) we should probably make this an if else
+    #Automatic Mode (Using CSV file)
     "2" {
         $data = Import-Csv -Path $CsvFilePath
         Write-Host "Entered Automatic Mode"
-        $verifiedUsers = Verify-Usernames($CsvFilePath) #zz not sure if we need to parse other input for when passwords expire and what not
-        Write-Host "List of valid usernames:" $verifiedUsers #this works!
-        $output += "List of valid usernames: " + ($verifiedUsers -join ", ")
-        Write-Host $output
-
-        #we should probably perform the neccessary operations in order
-        foreach ($username in $verifiedUsers) {
-            updateUserDescr -username $username #3
-        }
-        
-
-        Set-Content -Path "C:\Users\mivanov\OffBoardingScript\output.txt" -Value $output
     }
 }
 
 
- 
