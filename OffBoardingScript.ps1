@@ -203,16 +203,46 @@ function susOkta {
          $global:output += "An error occurred: $_" + "`n"
 
      }
-
-
-
-
 }
 
 function signOutO365 {
     param (
-
+        [Microsoft.ActiveDirectory.Management.ADUser]$username
     )
+
+    #App registration info
+    $clientId = "e32e54c0-9329-4644-9617-9534fa508047"
+    $tenantId = "a5cbe45f-1120-441c-a6e7-864e2c77e8c4"
+    $clientSecret = "CENSOR_FOR_SECURITY"
+
+    #Token endpoint
+    $tokenUrl = "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token"
+
+    $body = @{
+        client_id = $clientId
+        scope  = "https://graph.microsoft.com/.default"
+        client_secret = $clientSecret
+        grant_type = "client_credentials"
+    }
+
+    #Request token
+    $response = Invoke-RestMethod -Method Post -Uri $tokenUrl -Body $body -ContentType "application/x-www-form-urlencoded"
+    $accessToken = $response.access_token
+    $accessToken | Out-File -FilePath "token.txt"
+
+    #API endpoint
+    $graphUrl = "https://graph.microsoft.com/v1.0/users/$username/revokeSignInSessions"
+
+    # Set headers
+    $headers = @{
+        Authorization = "Bearer $accessToken"
+        "Content-Type" = "application/json"
+    }
+
+    Invoke-RestMethod -Uri "https://graph.microsoft.com/v1.0/users" -Headers @{Authorization = "Bearer $accessToken"}
+
+    #$result = Invoke-RestMethod -Method POST -Uri $graphUrl -Headers $headers
+    #$result
 }
 
 function disableActiveSync {
@@ -296,7 +326,8 @@ switch ($mode){
                     Write-Host $userID
                 }
                 #5: Sign out user from all O365 sessions
-                "5" {   
+                "5" {
+                    signOutO365 $user   
                 }
                 #6: Disable Exchange ActiveSync
                 "6" {
