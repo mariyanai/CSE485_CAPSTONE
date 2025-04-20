@@ -177,8 +177,8 @@ function susOkta {
     #Install-Module -Name Okta 
     #hesitant to do this wanted to be sure
 
-    $oktaDomain = "https://cityOfMesa.okta.com" #url is probably something like this 
-    $API_token = "i think this will be given to us!" 
+    $oktaDomain = "https://mesaaz.okta.com" #url is probably something like this 
+    $API_token = "00S61AvrIUOctyIIgiGNRu-e4Q2WKLCO1z0ekf3TQ4" 
 
     $headers = @{
     "Authorization" = "SSWS $apiToken"
@@ -211,16 +211,16 @@ function signOutO365 {
     )
 
     #App registration info
-    $clientId = "e32e54c0-9329-4644-9617-9534fa508047"
-    $tenantId = "a5cbe45f-1120-441c-a6e7-864e2c77e8c4"
-    $clientSecret = "CENSOR_FOR_SECURITY"
+    $clientId = "e32e54c0-9329-4644-9617-9534fa508047" #Application identifier
+    $tenantId = "a5cbe45f-1120-441c-a6e7-864e2c77e8c4" #Azure directory location
+    $clientSecret = "CENSOR_FOR_SECURITY" #App password
 
-    #Token endpoint
+    #Token endpoint: requests a token
     $tokenUrl = "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token"
 
     $body = @{
         client_id = $clientId
-        scope  = "https://graph.microsoft.com/.default"
+        scope  = "https://graph.microsoft.com/.default" #Access Microsoft Graph API
         client_secret = $clientSecret
         grant_type = "client_credentials"
     }
@@ -228,10 +228,12 @@ function signOutO365 {
     #Request token
     $response = Invoke-RestMethod -Method Post -Uri $tokenUrl -Body $body -ContentType "application/x-www-form-urlencoded"
     $accessToken = $response.access_token
-    $accessToken | Out-File -FilePath "token.txt"
+    #$accessToken | Out-File -FilePath "token.txt"
 
     #API endpoint
-    $graphUrl = "https://graph.microsoft.com/v1.0/users/$username/revokeSignInSessions"
+    $urlUser = $username.UserPrincipalName
+    $graphUrl = "https://graph.microsoft.com/v1.0/users/$urlUser/revokeSignInSessions" #Endpont for signing out user
+    #$graphUrl = "https://graph.microsoft.com/v1.0/users/duser@mesaaz.gov"
 
     # Set headers
     $headers = @{
@@ -239,21 +241,32 @@ function signOutO365 {
         "Content-Type" = "application/json"
     }
 
-    Invoke-RestMethod -Uri "https://graph.microsoft.com/v1.0/users" -Headers @{Authorization = "Bearer $accessToken"}
-
-    #$result = Invoke-RestMethod -Method POST -Uri $graphUrl -Headers $headers
-    #$result
+    #Send request to sign out user
+    $result = Invoke-RestMethod -Method POST -Uri $graphUrl -Headers $headers
+    Write-Host $result
 }
 
 function disableActiveSync {
     param (
         [Microsoft.ActiveDirectory.Management.ADUser]$username
     )
+    #Change connect to use certificate 
+    #Connect-ExchangeOnline -UserPrincipalName "udeprosa@mesaaz.gov"
+    #Write-Host Get-CASMailbox -Identity $username | Select Name, ActiveSyncEnabled
+    #Disconnect-ExchangeOnline -Confirm:$false
 
-    Connect-ExchangeOnline -UserPrincipalName "udeprosa@mesaaz.gov" -Device
-    Write-Host Get-CASMailbox -Identity $username | Select Name, ActiveSyncEnabled
+    $credFile = "C:\COM\Cred.txt"
+    $cred = Get-Content $credFile | ConvertTo-SecureString -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+
+    Connect-ExchangeOnline -AppId "e32e54c0-9329-4644-9617-9534fa508047" `
+        -CertificateFilePath "C:\Users\ttrent\UserDeproAutoPass.pfx" `
+        -CertificateThumbPrint "f9e7e15b373884b947f771d7bbb241377164e04c" `
+        -Organization "mesaarizona.onmicrosoft.com"
+        #-CertificatePassword $cred `
+
+    Get-CASMailbox -Identity "ttrent@mesaaz.gov" | Select Name, ActiveSyncEnabled
+    #Set-CASMailbox -Identity $username.UserPrincipalName -ActiveSyncEnabled $false
     Disconnect-ExchangeOnline -Confirm:$false
-
 }
 if ($CsvFilePath) {
     if (-Not (Test-Path $CsvFilePath)) {
